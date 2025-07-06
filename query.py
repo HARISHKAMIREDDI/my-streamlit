@@ -1,114 +1,67 @@
 import streamlit as st
 from openai import OpenAI
 import base64
-import os
-from html import escape  # To escape user/assistant content safely
+from html import escape
 
 # Load API key securely
 api_key = st.secrets["openai"]["api_key"]
 client = OpenAI(api_key=api_key)
 
-# Encode your local image (ai-tools.webp) to base64
+# ---------- BACKGROUND ----------
 def get_base64_background(image_path):
     with open(image_path, "rb") as img_file:
         encoded = base64.b64encode(img_file.read()).decode()
     return f"data:image/webp;base64,{encoded}"
 
-# Get local image background
 background_url = get_base64_background("ai-tools.webp")
 
-# ---------- INLINE CSS ----------
+# ---------- CSS ----------
 st.markdown(f"""
-    <style>
-    .stApp {{
-        background: url('{background_url}') no-repeat center center fixed;
-        background-size: cover;
-        animation: subtleZoom 30s ease-in-out infinite alternate;
-    }}
+<style>
+.stApp {{
+    background: url('{background_url}') no-repeat center center fixed;
+    background-size: cover;
+    animation: subtleZoom 30s ease-in-out infinite alternate;
+    padding: 0 !important;
+}}
 
-    @keyframes subtleZoom {{
-        0% {{ background-size: 100%; }}
-        100% {{ background-size: 110%; }}
-    }}
+@keyframes subtleZoom {{
+    0% {{ background-size: 100%; }}
+    100% {{ background-size: 110%; }}
+}}
 
-    h1, h3, p {{ color: #ffcc00; text-align: center; }}
+.chat-scroll {{
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 1rem;
+    background: transparent;
+    border-radius: 15px;
+}}
 
-    .chat-box {{
-        background: rgba(255, 255, 255, 0.1);
-        padding: 1rem;
-        border-radius: 15px;
-        margin-bottom: 1rem;
-        color: #e0e0e0;
-    }}
-
-    .stTextInput > div > div > input {{
-        background-color: #333;
-        color: white;
-        border-radius: 10px;
-        padding: 10px;
-    }}
-
-    .stFileUploader {{
-        background-color: rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 0.5rem;
-        color: white;
-    }}
-
-    .stButton > button {{
-        background-color: #ff4b4b;
-        color: white;
-        padding: 4px 10px;
-        font-size: 14px;
-        border-radius: 6px;
-        border: none;
-        font-weight: 600;
-        width: fit-content;
-        margin-top: 5px;
-    }}
-
-    .stImage {{
-        border: 2px solid white;
-        border-radius: 10px;
-    }}
-    </style>
-""", unsafe_allow_html=True)
-
-# ---------- HEADER ----------
-st.markdown("""
-<div style="
-    background-color: #ffffff;
-    padding: 15px 25px;
+.message {{
+    background-color: #000000;
+    padding: 15px;
     border-radius: 12px;
-    display: inline-block;
-    text-align: center;
-">
-    <h1 style='color: #000000; margin: 0;'>📸 PictoQuery</h1>
-</div>
+    margin: 15px 0;
+    color: #ffffff;
+    font-size: 16px;
+    font-family: "Segoe UI", sans-serif;
+}}
+
+.bottom-bar {{
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 1rem 2rem;
+    background-color: rgba(20, 20, 20, 0.95);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+    z-index: 9999;
+}}
+</style>
 """, unsafe_allow_html=True)
 
-# ---------- SUB HEADER (Black box aligned right) ----------
-st.markdown("""
-<div style="
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
-    margin-right: 30px;
-">
-    <div style="
-        background-color: rgba(0, 0, 0, 1);
-        padding: 12px 20px;
-        border-radius: 10px;
-        text-align: right;
-    ">
-        <p style='color: #FFFFFF; font-weight: 500; font-size: 18px; margin: 0;'>
-            Ask questions based on the uploaded image
-        </p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ---------- SESSION STATE INIT ----------
+# ---------- INIT SESSION ----------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -118,52 +71,102 @@ if "base64_image" not in st.session_state:
 if "last_input" not in st.session_state:
     st.session_state.last_input = ""
 
-# ---------- LAYOUT ----------
-col1, col2 = st.columns([1, 2])
+st.markdown("""
+<style>
+.header-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
 
-# ---------- LEFT PANEL: IMAGE UPLOAD ----------
-with col1:
-    uploaded_file = st.file_uploader("📄 Upload your image", type=["jpg", "jpeg", "png", "webp"])
+.main-title {
+    background-color: #ffffff;
+    padding: 15px 25px;
+    border-radius: 12px;
+    color: #000000;
+    font-size: 32px;
+    font-weight: bold;
+    font-family: "Segoe UI", sans-serif;
+}
+
+.chat-bubble {
+    position: relative;
+    background: #0078d4;
+    color: white;
+    padding: 12px 18px;
+    border-radius: 15px;
+    font-size: 16px;
+    font-family: "Segoe UI", sans-serif;
+    margin-top: 15px;
+    max-width: 300px;
+}
+
+.chat-bubble::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: -10px;
+    width: 0;
+    height: 0;
+    border: 10px solid transparent;
+    border-right-color: #0078d4;
+}
+</style>
+
+<div class="header-container">
+    <div class="main-title">📸 PictoQuery</div>
+    <div class="chat-bubble">💬 ASK ABOUT THE UPLOADED IMAGE</div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ---------- CHAT DISPLAY ----------
+if st.session_state.messages:
+    with st.container():
+        st.markdown("<div class='chat-scroll'>", unsafe_allow_html=True)
+
+        for msg in st.session_state.messages:
+            role = "💬 You" if msg["role"] == "user" else "🤖 GPT"
+            content = escape(msg["content"])
+            st.markdown(
+                f"""
+                <div class='message'>
+                    <p><strong>{role}:</strong> {content}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------- FIXED BOTTOM INPUT BAR ----------
+st.markdown('<div class="bottom-bar">', unsafe_allow_html=True)
+
+with st.container():
+    uploaded_file = st.file_uploader("📄", type=["jpg", "jpeg", "png", "webp"], label_visibility="collapsed", key="unique_file_uploader", help="Upload your image")
+    
     if uploaded_file:
         image_bytes = uploaded_file.read()
-        st.image(image_bytes, caption="Your Image", use_container_width=True)
         st.session_state.base64_image = base64.b64encode(image_bytes).decode("utf-8")
+        st.image(image_bytes, caption="Uploaded Image", width=300)
 
-# ---------- RIGHT PANEL: CHAT HISTORY ----------
-with col2:
-    st.markdown("""
-    <div style="
-        background-color: rgba(255, 255, 255, 0.85);
-        padding: 12px 20px;
-        border-radius: 12px;
-        display: inline-block;
-        text-align: center;
-    ">
-        <h3 style='color: #000000; margin: 0;'>
-                <span style='color:#000000;'>💬</span> Ask about the image</h3>
-    </div>
-    """, unsafe_allow_html=True)
 
-    chat_container = st.container()
-    with chat_container:
-        for msg in st.session_state.messages:
-            st.markdown('<div class="chat-box">', unsafe_allow_html=True)
-            content = escape(msg["content"])
-            if msg["role"] == "user":
-                st.markdown(f"**🧑 You:** <span style='color:#fff;'>{content}</span>", unsafe_allow_html=True)
-            elif msg["role"] == "assistant":
-                st.markdown(f"**🤖 GPT-4:** <span style='color:#90ee90;'>{content}</span>", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("<div style='height: 100px;'></div>", unsafe_allow_html=True)  # Padding for fixed input
+    with st.form(key="query_form", clear_on_submit=True):
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            user_input = st.text_input("", placeholder="Type your question...", label_visibility="collapsed")
+        with col2:
+            send_clicked = st.form_submit_button("Send")
 
-# ---------- INPUT FIELD ----------
-user_input = st.text_input("Your question", key="user_input_key", label_visibility="collapsed", placeholder="Type your question here...")
-send_clicked = st.button("Send", use_container_width=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
+# ---------- PROCESSING INPUT ----------
 if (user_input and st.session_state.last_input != user_input) or send_clicked:
     if not st.session_state.base64_image:
-        st.warning("Please upload an image first.")
+        st.warning("⚠️ Please upload an image first.")
     elif user_input.strip():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.last_input = user_input
@@ -172,24 +175,22 @@ if (user_input and st.session_state.last_input != user_input) or send_clicked:
             with st.spinner("Analyzing the image..."):
                 response = client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": user_input},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{st.session_state.base64_image}"
-                                    },
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_input},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{st.session_state.base64_image}"
                                 },
-                            ],
-                        }
-                    ],
+                            },
+                        ],
+                    }]
                 )
                 reply = response.choices[0].message.content
                 st.session_state.messages.append({"role": "assistant", "content": reply})
                 st.rerun()
-
         except Exception as e:
             st.error(f"❌ Error: {e}")
+
